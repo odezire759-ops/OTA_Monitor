@@ -4,6 +4,7 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 // ===== CONFIG =====
 // เปลี่ยน URL นี้หลัง Deploy Apps Script เป็น Web App
 const API_URL = "https://script.google.com/macros/s/AKfycbzroJhaCPNKiaVFFLzDhvESVvriR5MM-bM-c5PbMs07d_n0eMF7l2uByt4bmH4ozyj_bg/exec";
+
 const AGODA_COLOR = "#FF6B35";
 const TRAVELOKA_COLOR = "#0EA5E9";
 
@@ -61,7 +62,9 @@ const THEMES = {
 // ===== HELPER: แปลง dd/MM/yyyy → Date object =====
 function parseDate(str) {
   if (!str) return null;
-  const parts = str.split("/");
+  // handle "dd/MM/yyyy HH:mm" or "dd/MM/yyyy"
+  const dateOnly = String(str).split(" ")[0];
+  const parts = dateOnly.split("/");
   if (parts.length !== 3) return null;
   return new Date(+parts[2], +parts[1] - 1, +parts[0]);
 }
@@ -223,16 +226,47 @@ export default function Dashboard() {
     ];
   }, [allBookings]);
 
-  // recent bookings (ล่าสุด 10 รายการ)
+  // วันนี้ / พรุ่งนี้ (format dd/MM/yyyy)
+  const todayDate = useMemo(() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  }, []);
+  const tomorrowDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  }, []);
+
+  // ลูกค้า check-in วันนี้
+  const checkInToday = useMemo(() => {
+    return allBookings.filter(b => b.checkIn === todayDate && !(b.status || "").toUpperCase().includes("CANCEL"));
+  }, [allBookings, todayDate]);
+
+  // ลูกค้า check-in พรุ่งนี้
+  const checkInTomorrow = useMemo(() => {
+    return allBookings.filter(b => b.checkIn === tomorrowDate && !(b.status || "").toUpperCase().includes("CANCEL"));
+  }, [allBookings, tomorrowDate]);
+
+  // ลูกค้า check-out วันนี้
+  const checkOutToday = useMemo(() => {
+    return allBookings.filter(b => b.checkOut === todayDate && !(b.status || "").toUpperCase().includes("CANCEL"));
+  }, [allBookings, todayDate]);
+
+  // recent bookings — เรียงตามวันที่จองล่าสุด (savedAt) แสดง 5 รายการ
   const recentBookings = useMemo(() => {
     return [...allBookings]
       .sort((a, b) => {
-        const da = parseDate(a.checkIn);
-        const db = parseDate(b.checkIn);
-        if (!da || !db) return 0;
-        return db - da;
+        // savedAt = "dd/MM/yyyy HH:mm"
+        const parseFullDate = (s) => {
+          if (!s) return 0;
+          const [datePart, timePart] = String(s).split(" ");
+          const [dd, mm, yyyy] = datePart.split("/");
+          const [hh, mi] = (timePart || "00:00").split(":");
+          return new Date(+yyyy, +mm - 1, +dd, +hh, +mi).getTime();
+        };
+        return parseFullDate(b.savedAt || b.emailDate) - parseFullDate(a.savedAt || a.emailDate);
       })
-      .slice(0, 10);
+      .slice(0, 5);
   }, [allBookings]);
 
   // heatmap
@@ -582,10 +616,94 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ===== TABLE ===== */}
+        {/* ===== TODAY / TOMORROW STATUS ===== */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+          {/* Check-in วันนี้ */}
+          <Card style={{ borderLeft: `3px solid #22c55e` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 20 }}>🟢</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#22c55e" }}>Check-in วันนี้</div>
+                <div style={{ fontSize: 11, color: T.subText }}>{todayDate} · {checkInToday.length} ห้อง</div>
+              </div>
+            </div>
+            {checkInToday.length === 0 ? (
+              <div style={{ fontSize: 12, color: T.mutedText, padding: "10px 0", textAlign: "center" }}>ไม่มีลูกค้า check-in วันนี้</div>
+            ) : (
+              checkInToday.map((b, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 4, background: isDark ? "rgba(34,197,94,0.06)" : "rgba(34,197,94,0.06)", borderRadius: 8, border: `1px solid ${isDark ? "rgba(34,197,94,0.15)" : "rgba(34,197,94,0.12)"}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{b.guestName}</div>
+                    <div style={{ fontSize: 10, color: T.subText }}>{b.roomType || b.hotelName} · {b.checkIn} → {b.checkOut}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: (b.source || "").includes("Agoda") ? "rgba(255,107,53,0.15)" : "rgba(14,165,233,0.15)", color: (b.source || "").includes("Agoda") ? AGODA_COLOR : TRAVELOKA_COLOR, fontWeight: 600 }}>{b.source}</span>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.gold, marginTop: 3 }}>฿{(b.totalAmount || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </Card>
+
+          {/* Check-in พรุ่งนี้ */}
+          <Card style={{ borderLeft: `3px solid ${TRAVELOKA_COLOR}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 20 }}>🔵</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: TRAVELOKA_COLOR }}>Check-in พรุ่งนี้</div>
+                <div style={{ fontSize: 11, color: T.subText }}>{tomorrowDate} · {checkInTomorrow.length} ห้อง</div>
+              </div>
+            </div>
+            {checkInTomorrow.length === 0 ? (
+              <div style={{ fontSize: 12, color: T.mutedText, padding: "10px 0", textAlign: "center" }}>ไม่มีลูกค้า check-in พรุ่งนี้</div>
+            ) : (
+              checkInTomorrow.map((b, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 4, background: isDark ? "rgba(14,165,233,0.06)" : "rgba(14,165,233,0.06)", borderRadius: 8, border: `1px solid ${isDark ? "rgba(14,165,233,0.15)" : "rgba(14,165,233,0.12)"}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{b.guestName}</div>
+                    <div style={{ fontSize: 10, color: T.subText }}>{b.roomType || b.hotelName} · {b.checkIn} → {b.checkOut}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: (b.source || "").includes("Agoda") ? "rgba(255,107,53,0.15)" : "rgba(14,165,233,0.15)", color: (b.source || "").includes("Agoda") ? AGODA_COLOR : TRAVELOKA_COLOR, fontWeight: 600 }}>{b.source}</span>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.gold, marginTop: 3 }}>฿{(b.totalAmount || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </Card>
+
+          {/* Check-out วันนี้ */}
+          <Card style={{ borderLeft: `3px solid ${AGODA_COLOR}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 20 }}>🟠</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: AGODA_COLOR }}>Check-out วันนี้</div>
+                <div style={{ fontSize: 11, color: T.subText }}>{todayDate} · {checkOutToday.length} ห้อง</div>
+              </div>
+            </div>
+            {checkOutToday.length === 0 ? (
+              <div style={{ fontSize: 12, color: T.mutedText, padding: "10px 0", textAlign: "center" }}>ไม่มีลูกค้า check-out วันนี้</div>
+            ) : (
+              checkOutToday.map((b, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 4, background: isDark ? "rgba(255,107,53,0.06)" : "rgba(255,107,53,0.06)", borderRadius: 8, border: `1px solid ${isDark ? "rgba(255,107,53,0.15)" : "rgba(255,107,53,0.12)"}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{b.guestName}</div>
+                    <div style={{ fontSize: 10, color: T.subText }}>{b.roomType || b.hotelName} · {b.checkIn} → {b.checkOut}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: (b.source || "").includes("Agoda") ? "rgba(255,107,53,0.15)" : "rgba(14,165,233,0.15)", color: (b.source || "").includes("Agoda") ? AGODA_COLOR : TRAVELOKA_COLOR, fontWeight: 600 }}>{b.source}</span>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.gold, marginTop: 3 }}>฿{(b.totalAmount || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </Card>
+        </div>
+
+        {/* ===== TABLE — การจองล่าสุด 5 อันดับ ===== */}
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>การจองล่าสุด</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>การจองล่าสุด 5 อันดับ</div>
             <div style={{ fontSize: 11, color: T.mutedText }}>ทั้งหมด {allBookings.length} รายการ</div>
           </div>
           <div style={{ overflowX: "auto" }}>
