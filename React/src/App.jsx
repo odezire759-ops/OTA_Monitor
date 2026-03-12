@@ -4,7 +4,6 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 // ===== CONFIG =====
 // เปลี่ยน URL นี้หลัง Deploy Apps Script เป็น Web App
 const API_URL = "https://script.google.com/macros/s/AKfycbzroJhaCPNKiaVFFLzDhvESVvriR5MM-bM-c5PbMs07d_n0eMF7l2uByt4bmH4ozyj_bg/exec";
-
 const AGODA_COLOR = "#FF6B35";
 const TRAVELOKA_COLOR = "#0EA5E9";
 
