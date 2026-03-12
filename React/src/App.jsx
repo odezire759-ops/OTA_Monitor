@@ -163,7 +163,7 @@ export default function Dashboard() {
     if (!allBookings.length) return [];
     const map = {};
     allBookings.forEach(b => {
-      const mk = getMonthKey(b.checkIn);
+      const mk = getMonthKey(b.emailDate);
       if (!mk) return;
       if (!map[mk]) {
         map[mk] = { monthKey: mk, agoda: 0, traveloka: 0, agodaCount: 0, travelokaCount: 0, agodaCancel: 0, travelokaCancel: 0 };
